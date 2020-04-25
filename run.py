@@ -1,41 +1,58 @@
-from keras.models import Model,load_model,model_from_json
-import keras.backend as K
+from tensorflow.keras.models import Model
+import tensorflow.keras.backend as K
 import os, sys
 from keras import regularizers, activations, losses
 from model import *
 from custom_layers import *
-from keras.preprocessing.image import load_img, img_to_array, array_to_img
+from tensorflow.keras.preprocessing.image import load_img, img_to_array, array_to_img
+from utils import change_input_shapes, load_json_h5_model
 
-cdim, sdim, style_n = (256,256,3), (224,224,3), 100
+# Force CPU as GPU loading takes a lot of time
+import os
+os.environ["CUDA_DEVICE_ORDER"] = "PCI_BUS_ID"   # see issue #152
+os.environ["CUDA_VISIBLE_DEVICES"] = ""
+
+cdim, sdim = (256,256,3), (256,256,3)
 
 if len(sys.argv) < 4:
-    print("Usage: train <model.mdl> <content_img> <style_img>")
+    print("Usage: run <model> <content_img> <style_img>")
 
+print("Loading model")
 # Load models if they are already present
-with open(sys.argv[1]+".json") as json_file:
-    model = model_from_json(json_file.read(),custom_objects=CUSTOM_OBJECTS)
-model.load_weights(sys.argv[1]+'.h5')
+model = load_json_h5_model(sys.argv[1])
+#model.summary()
 
-model.summary()
+smodel = model.get_layer('model_style')
+tmodel = model.get_layer('model_transfer')
 
-smodel = model.get_layer('model_1')
+#print("Reshaping models")
+#smodel = change_input_shapes(smodel, [(None,None,None,3)])
+#tmodel = change_input_shapes(tmodel, [(None,None,None,3),tmodel.input_shape[1]])
+
 #smodel.summary()
+#tmodel.summary()
+
+sdim, cdim = smodel.input_shape[1:], tmodel.input_shape[0][1:] 
 
 simage = load_img(sys.argv[3], target_size=sdim)
-simage = img_to_array(simage)/255.0
+#simage.show()
+simage = img_to_array(simage)
 simage = simage.reshape((1, simage.shape[0], simage.shape[1], simage.shape[2]))
+
+print("Calculating style")
 style = smodel.predict(simage)
 print("Style %r" % (list(style[0])))
 
-tmodel = model.get_layer('model_2')
-#tmodel.summary()
 
 cimage = load_img(sys.argv[2], target_size=cdim)
-cimage = img_to_array(cimage)/255.0
+#cimage.show()
+cimage = img_to_array(cimage)
 cimage = cimage.reshape((1, cimage.shape[0], cimage.shape[1], cimage.shape[2]))
+
+print("Styling content image")
 timg = tmodel.predict([cimage,style])
 
-timg = timg.reshape(cdim)
-timg = array_to_img(timg*255.0)
+timg = timg.reshape(timg.shape[1:])
+timg = array_to_img(timg)
 timg.show()
 
